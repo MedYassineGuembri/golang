@@ -4,21 +4,63 @@ import (
 	"bufio"
 	"estiam/dictionary"
 	"fmt"
-	"os"
+	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
-	dict := dictionary.New("dictionary.json")
-	reader := bufio.NewReader(os.Stdin)
-
-	actionAdd(dict, "pomme", "Un fruit comestible d'un pommier.", reader)
-	actionAdd(dict, "ordinateur", "Une machine électronique qui traite les données.", reader)
-
-	actionDefine(dict, "pomme", reader)
+    dict := dictionary.New("dictionary.json")
+ 
 
 
+    router := mux.NewRouter()
 
-	actionList(dict)
+   
+    router.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
+       
+        word := r.FormValue("word")
+        definition := r.FormValue("definition")
+        err := dict.Add(word, definition)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        fmt.Fprintf(w, "Entry added: %s - %s\n", word, definition)
+    }).Methods("POST")
+
+    router.HandleFunc("/define/{word}", func(w http.ResponseWriter, r *http.Request) {
+        
+        vars := mux.Vars(r)
+        word := vars["word"]
+        entry, found, err := dict.Get(word)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        if !found {
+            http.NotFound(w, r)
+            return
+        }
+        fmt.Fprintf(w, "Définition de '%s': %s\n", word, entry.Definition)
+    }).Methods("GET")
+
+    router.HandleFunc("/remove/{word}", func(w http.ResponseWriter, r *http.Request) {
+        
+        vars := mux.Vars(r)
+        word := vars["word"]
+        err := dict.Remove(word)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        fmt.Fprintf(w, "Entry removed: %s\n", word)
+    }).Methods("DELETE")
+
+    
+    http.Handle("/", router)
+    fmt.Println("Server is running on :8080...")
+    http.ListenAndServe(":8080", nil)
 }
 
 func actionAdd(d *dictionary.Dictionary, word, definition string, reader *bufio.Reader) {
