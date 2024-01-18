@@ -1,44 +1,89 @@
 package dictionary
 
-import "sort"
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"sort"
+)
 type Entry struct {
-	Definition string
+	Definition string `json:"definition"`
 }
 
-func (e Entry) String() string {
 
-	return e.Definition
-}
 
 type Dictionary struct {
-	entries map[string]Entry
+	filepath string
 }
 
-func New() *Dictionary {
-
-	return &Dictionary{entries: make(map[string]Entry)}
+func New(filepath string) *Dictionary {
+	return &Dictionary{filepath: filepath}
 }
 
-func (d *Dictionary) Add(word string, definition string) {
-	d.entries[word] = Entry{Definition: definition}
+func (d *Dictionary) load() (map[string]Entry, error) {
+	var data map[string]Entry
+	file, err := os.ReadFile(d.filepath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return make(map[string]Entry), nil
+		}
+		return nil, err
+	}
+	err = json.Unmarshal(file, &data)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
-func (d *Dictionary) Get(word string) (Entry, bool) {
-	entry, exists := d.entries[word]
-	return entry, exists
+func (d *Dictionary) save(data map[string]Entry) error {
+	file, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(d.filepath, file, 0666)
 }
 
-func (d *Dictionary) Remove(word string) {
-	delete(d.entries, word)
+func (d *Dictionary) Add(word string, definition string) error {
+	data, err := d.load()
+	if err != nil {
+		return err
+	}
+	data[word] = Entry{Definition: definition}
+	return d.save(data)
 }
 
+func (d *Dictionary) Get(word string) (Entry, bool, error) {
+	entries, err := d.load()
+	if err != nil {
+		return Entry{}, false, err
+	}
+	entry, found := entries[word]
+	return entry, found, nil
+}
 
+func (d *Dictionary) Remove(word string) error {
+	data, err := d.load()
+	if err != nil {
+		return err
+	}
+	_, exists := data[word]
+	if !exists {
+		return errors.New("word not found")
+	}
+	delete(data, word)
+	return d.save(data)
+}
 
-func (d *Dictionary) List() ([]string) {
+func (d *Dictionary) List() ([]string, error) {
+	data, err := d.load()
+	if err != nil {
+		return nil, err
+	}
 	var words []string
-	for word := range d.entries {
+	for word := range data {
 		words = append(words, word)
 	}
 	sort.Strings(words)
-	return words
+	return words, nil
 }
